@@ -5114,3 +5114,32 @@ XmlTableDestroyOpaque(TableFuncScanState *state)
 	NO_XML_SUPPORT();
 #endif							/* not USE_LIBXML */
 }
+
+xmlDocPtr
+xml_parse_wrapper(text *data, XmlOptionType xmloption_arg,
+		  bool preserve_whitespace, int encoding,
+		  XmlOptionType *parsed_xmloptiontype, xmlNodePtr *parsed_nodes,
+		  Node *escontext)
+{
+	
+#ifdef USE_LIBXML
+	return xml_parse(data, xmloption_arg, preserve_whitespace,
+					encoding, parsed_xmloptiontype, parsed_nodes, escontext);
+#else
+	NO_XML_SUPPORT();
+	return NULL;
+#endif
+}
+
+xmlChar *
+pg_xmlCharStrndup_wrapper(const char *str, size_t len)
+{
+	return pg_xmlCharStrndup(str, len);
+}
+
+int
+parse_xml_decl_wrapper(const xmlChar *str, size_t *lenp,
+						   xmlChar **version, xmlChar **encoding, int *standalone)
+{
+	return parse_xml_decl(str, lenp, version, encoding, standalone);
+}
