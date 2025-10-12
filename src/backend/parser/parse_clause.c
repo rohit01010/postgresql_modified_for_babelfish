@@ -3425,12 +3425,31 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 	if (restype == UNKNOWNOID)
 	{
 		if (sql_dialect != SQL_DIALECT_TSQL || pstate->p_resolve_unknowns)
+		{	
 			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
 											restype, TEXTOID, -1,
 											COERCION_IMPLICIT,
 											COERCE_IMPLICIT_CAST,
 											-1);
-		restype = TEXTOID;
+			restype = TEXTOID;
+		}
+		else if (IsA(tle->expr, Const) && !((Const *) tle->expr)->constisnull)
+		{
+			Oid			sys_varcharoid;
+			int32		typmod = strlen(DatumGetCString(((Const *) tle->expr)->constvalue)) + VARHDRSZ;
+			TypeName   *varcharTypeName = makeTypeNameFromNameList(list_make2(makeString("sys"),
+																			  makeString("varchar")));
+
+			sys_varcharoid = typenameTypeId(NULL, (const TypeName *) varcharTypeName);
+			tle->expr = (Expr *) coerce_to_target_type(pstate, (Node *) tle->expr,
+													   restype, sys_varcharoid, typmod,
+													   COERCION_IMPLICIT,
+													   COERCE_IMPLICIT_CAST,
+													   -1);
+			restype = sys_varcharoid;
+		}
+		else
+			restype = TEXTOID;
 	}
 
 	/*
@@ -3567,12 +3586,31 @@ addTargetToGroupList(ParseState *pstate, TargetEntry *tle,
 	if (restype == UNKNOWNOID)
 	{
 		if (sql_dialect != SQL_DIALECT_TSQL || pstate->p_resolve_unknowns)
+		{
 			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
 											restype, TEXTOID, -1,
 											COERCION_IMPLICIT,
 											COERCE_IMPLICIT_CAST,
 											-1);
-		restype = TEXTOID;
+			restype = TEXTOID;
+		}
+		else if (IsA(tle->expr, Const) && !((Const *) tle->expr)->constisnull)
+		{
+			Oid			sys_varcharoid;
+			int32		typmod = strlen(DatumGetCString(((Const *) tle->expr)->constvalue)) + VARHDRSZ;
+			TypeName   *varcharTypeName = makeTypeNameFromNameList(list_make2(makeString("sys"),
+																			  makeString("varchar")));
+
+			sys_varcharoid = typenameTypeId(NULL, (const TypeName *) varcharTypeName);
+			tle->expr = (Expr *) coerce_to_target_type(pstate, (Node *) tle->expr,
+													   restype, sys_varcharoid, typmod,
+													   COERCION_IMPLICIT,
+													   COERCE_IMPLICIT_CAST,
+													   -1);
+			restype = sys_varcharoid;
+		}
+		else
+			restype = TEXTOID;
 	}
 
 	/* avoid making duplicate grouplist entries */
