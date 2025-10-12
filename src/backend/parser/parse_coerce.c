@@ -1431,6 +1431,15 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 	bool		pispreferred;
 	ListCell   *lc;
 	const char *dump_restore = GetConfigOption("babelfishpg_tsql.dump_restore", true, false);
+	Oid			sys_varcharoid = InvalidOid;
+
+	if (sql_dialect == SQL_DIALECT_TSQL)
+	{
+		TypeName   *varcharTypeName = makeTypeNameFromNameList(list_make2(makeString("sys"), makeString("varchar")));
+
+		sys_varcharoid = typenameTypeId(NULL, (const TypeName *) varcharTypeName);
+	}
+
 
 	if (select_common_type_hook)
 	{
@@ -1443,6 +1452,12 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 	pexpr = (Node *) linitial(exprs);
 	lc = list_second_cell(exprs);
 	ptype = exprType(pexpr);
+	if (sql_dialect == SQL_DIALECT_TSQL 
+		&& ptype == UNKNOWNOID 
+		&& OidIsValid(sys_varcharoid)
+		&& IsA(pexpr, Const)
+		&& !(((Const *) pexpr)->constisnull))
+		ptype = sys_varcharoid;
 
 	/*
 	 * If all input types are valid and exactly the same, just pick that type.
@@ -1455,6 +1470,13 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 		{
 			Node	   *nexpr = (Node *) lfirst(lc);
 			Oid			ntype = exprType(nexpr);
+
+			if (sql_dialect == SQL_DIALECT_TSQL 
+				&& ntype == UNKNOWNOID 
+				&& OidIsValid(sys_varcharoid)
+				&& IsA(nexpr, Const)
+				&& !(((Const *) nexpr)->constisnull))
+				ntype = sys_varcharoid;
 
 			if (ntype != ptype)
 				break;
@@ -1479,6 +1501,13 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 	{
 		Node	   *nexpr = (Node *) lfirst(lc);
 		Oid			ntype = getBaseType(exprType(nexpr));
+
+		if (sql_dialect == SQL_DIALECT_TSQL 
+			&& ntype == UNKNOWNOID 
+			&& OidIsValid(sys_varcharoid)
+			&& IsA(nexpr, Const)
+			&& !(((Const *) nexpr)->constisnull))
+			ntype = sys_varcharoid;
 
 		/* move on to next one if no new information... */
 		if (ntype != UNKNOWNOID && ntype != ptype)
@@ -1544,8 +1573,26 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 				pcategory = ncategory;
 				pispreferred = nispreferred;
 			}
+			
 		} else if (sql_dialect == SQL_DIALECT_TSQL && ntype == ptype)
 		{
+			Oid nexpr_type = exprType(nexpr);
+			Oid pexpr_type = exprType(pexpr);
+
+			if (sql_dialect == SQL_DIALECT_TSQL 
+				&& nexpr_type == UNKNOWNOID 
+				&& OidIsValid(sys_varcharoid)
+				&& IsA(nexpr, Const)
+				&& !(((Const *) nexpr)->constisnull))
+				nexpr_type = sys_varcharoid;
+
+			if (sql_dialect == SQL_DIALECT_TSQL 
+				&& pexpr_type == UNKNOWNOID 
+				&& OidIsValid(sys_varcharoid)
+				&& IsA(pexpr, Const)
+				&& !(((Const *) pexpr)->constisnull))
+				pexpr_type = sys_varcharoid;
+		
 			/*
 			 * For the columns which have the same base type, we choose the
 			 * expression with higher precedence type in T-SQL.
@@ -1556,10 +1603,10 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 			 * same.
 			 */
 			if (is_tsql_base_datatype_hook &&
-				(*is_tsql_base_datatype_hook)(exprType(nexpr)) &&
+				(*is_tsql_base_datatype_hook)(nexpr_type) &&
 				determine_datatype_precedence_hook &&
-				determine_datatype_precedence_hook(exprType(nexpr),
-												   exprType(pexpr)))
+				determine_datatype_precedence_hook(nexpr_type,
+												   pexpr_type))
 				pexpr = nexpr;
 		}
 	}
@@ -1571,10 +1618,22 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 	 * From SQL Server's perspective, we should try to retain those types as
 	 * result types.
 	 */
-	if (sql_dialect == SQL_DIALECT_TSQL && ptype != exprType(pexpr) &&
-		is_tsql_base_datatype_hook &&
-		(*is_tsql_base_datatype_hook)(exprType(pexpr)))
-		ptype = exprType(pexpr);
+	if (sql_dialect == SQL_DIALECT_TSQL)
+	{
+		Oid pexpr_type = exprType(pexpr);
+
+		if (sql_dialect == SQL_DIALECT_TSQL 
+			&& pexpr_type == UNKNOWNOID 
+			&& OidIsValid(sys_varcharoid)
+			&& IsA(pexpr, Const)
+			&& !(((Const *) pexpr)->constisnull))
+			pexpr_type = sys_varcharoid;
+
+		if (ptype != pexpr_type &&
+			is_tsql_base_datatype_hook &&
+			(*is_tsql_base_datatype_hook)(pexpr_type))
+			ptype = pexpr_type;
+	}
 
 	/*
 	 * If all the inputs were UNKNOWN type --- ie, unknown-type literals ---
